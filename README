@@ -1,0 +1,7 @@
+Usage
+========
+To use a series of images named image1.png, image2.png, ... use
+
+    ./Ballspeed path/to/images/image%d.png
+
+Image numbers should start at 1. The number of images is automatically determined.

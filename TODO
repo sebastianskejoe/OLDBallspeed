@@ -1,0 +1,14 @@
+Ballspeed features
+====
+- Load video/series of images
+- Hough transformation
+- Template matching
+- Point tracking
+- Sum of differences?
+
+Architecture
+====
+- Each feature has it's own file/module
+- Each module exports only one function
+- All functions implement multiple backends
+- Backend is decided at compile time
