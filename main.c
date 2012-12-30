@@ -2,10 +2,9 @@
 #include "window.h"
 
 #include <stdlib.h>
+#include <GL/glut.h>
 
 int main(int argc, char **argv) {
-    HoughResult hr = houghTransform();
-
     // Create window
     struct window *window = malloc(sizeof(struct window));
     active_window = window;
@@ -14,7 +13,10 @@ int main(int argc, char **argv) {
     window->argc = argc;
     window->argv = argv;
     window->state = STATE_LOADING;
+    window->radius = 50;
     create_window(window);
 
     glutMainLoop();
+
+    return 0;
 }
