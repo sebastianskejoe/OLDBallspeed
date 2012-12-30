@@ -1,6 +1,8 @@
 Ballspeed features
 ====
-- Load video/series of images
+✓ Load series of images
+- Load video
+✓ Edge detection
 - Hough transformation
 - Template matching
 - Point tracking
