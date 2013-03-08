@@ -4,7 +4,13 @@
 #include <stdlib.h>
 #include <GL/glut.h>
 
+#include <stdio.h>
+
 int main(int argc, char **argv) {
+    if (argc < 3) {
+        printf("Usage: %s [path to images] [diameter of ball(meter)]\n", argv[0]);
+        return 1;
+    }
     // Create window
     struct window *window = malloc(sizeof(struct window));
     active_window = window;

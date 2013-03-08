@@ -1,7 +1,13 @@
 Usage
 ========
-To use a series of images named image1.png, image2.png, ... use
+Usage:
 
-    ./Ballspeed path/to/images/image%d.png
+    ./program_name path/to/images/frame%d.png diameter_of_ball_in_meters
 
-Image numbers should start at 1. The number of images is automatically determined.
+The path to the frames should contain "%d". The program will automatically replace this with the frame number.
+
+Left and right arrow steps one frame back or forth
+Up and down arrow steps ten frames back or forth
+Mouse click searches for circles in area around click, and if found, sets this circle as the template.
+Home key matches all frames against the template.
+"P" key prints coordinates and speed to the terminal.

@@ -4,6 +4,7 @@
 struct window;
 
 #include <GL/gl.h>
+#include <opencv/cv.h>
 #include "frame.h"
 
 #define STATE_LOADING   1
@@ -15,9 +16,13 @@ struct window {
     int nfr; // Number of frames
     int radius; // Radius of search area
     int w, h; // Window width and height
+    double mpp; // Meters per pixel
     int argc;
     char **argv;
     struct frame *frames;
+
+    CvMat *tmpl;
+    CvPoint guess;
 };
 
 struct window *active_window;
@@ -28,5 +33,6 @@ unsigned char *get_sub_image(struct window *window, int x, int y);
 
 void event_key_special(int key, int x, int y);
 void event_mouse(int button, int state, int x, int y);
+void event_key(unsigned char key, int x, int y);
 
 #endif

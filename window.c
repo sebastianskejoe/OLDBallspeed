@@ -1,11 +1,10 @@
 #include "window.h"
-#include "stb_image.h"
 #include <GL/glut.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-
-#include "edge.h"
+#include <math.h>
+#include "output.h"
 
 void initGLUT();
 
@@ -27,6 +26,7 @@ void initGLUT(struct window *window) {
     glutDisplayFunc(redraw_window);
     glutSpecialFunc(event_key_special);
     glutMouseFunc(event_mouse);
+    glutKeyboardFunc(event_key);
     return;
 }
 
@@ -41,7 +41,6 @@ void redraw_window() {
     case STATE_LOADING:
         glColor3f(1.0f, 1.0f, 1.0f);
         glutBitmapString(GLUT_BITMAP_HELVETICA_18, "Loading frames ... Please wait.");
-        glFlush();
         load_frames(active_window);
         active_window->state = STATE_VIEW;
         break;
@@ -68,6 +67,7 @@ void redraw_window() {
         glEnd();
         glDisable(GL_TEXTURE_2D);
 
+        // Draw text
         glColor3f(1.0f, 1.0f, 1.0f);
         char *fr_str = malloc(255);
         char *rad_str = malloc(255);
@@ -78,32 +78,42 @@ void redraw_window() {
         glutBitmapString(GLUT_BITMAP_HELVETICA_12, fr_str);
         glutBitmapString(GLUT_BITMAP_HELVETICA_12, rad_str);
 
-        // If we have an edge image, draw that
-        if (frame->flag & HAS_EDGE) {
-            // Create texture
-            GLuint tex;
-            glGenTextures(1, &tex);
-            glBindTexture(GL_TEXTURE_2D, tex);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        // If we have hough transformed it, draw a circle
+        if (frame->flag & HAS_HOUGH && frame->hough.found) {
+            glLoadIdentity();
+            glOrtho(0, active_window->w, active_window->h, 0, 0, 1);
+	        float theta;
+            float x0, y0, r;
+            x0 = frame->hough.x;
+            y0 = frame->hough.y;
+            r = frame->hough.radius;
 
-            // Load image data
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, frame->edge.radius*2, frame->edge.radius*2, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, frame->edge.data);
-            glEnable(GL_TEXTURE_2D);
-            glViewport(frame->edge.x-frame->edge.radius, active_window->h-frame->edge.y-frame->edge.radius, frame->edge.radius*2, frame->edge.radius*2);
-            glBegin(GL_QUADS);
-                glTexCoord2f(0.0,1.0);
-                glVertex2f(0,0);
-                glTexCoord2f(1.0,1.0);
-                glVertex2i(1.0f, 0.0f);
-                glTexCoord2f(1.0f,0.0f);
-                glVertex2f(1.0f, 1.0f);
-                glTexCoord2f(0.0f, 0.0f);
-                glVertex2f(0,1.0f);
+
+            glBegin(GL_LINE_LOOP);
+                // Draw circle
+                glColor3f(1.0f, 0.0f, 0.0f);
+                for (theta = 0.0f; theta < 2*M_PI; theta += 0.01f) {
+                    glVertex2f(x0+r*cos(theta), y0+r*sin(theta));
+                }
+
+                glColor3f(1.0f, 1.0f, 1.0f);
             glEnd();
-            glDisable(GL_TEXTURE_2D);
+        }
+
+        // Draw square around match
+        if (frame->flag & HAS_MATCH) {
+            glLoadIdentity();
+            glOrtho(0, active_window->w, active_window->h, 0, 0, 1);
+            float w = (float)active_window->tmpl->cols, h = (float)active_window->tmpl->rows;
+
+            glBegin(GL_LINE_LOOP);
+                glColor3f(1.0f, 0.0f, 0.0f);
+                glVertex2f(frame->match.x+w, frame->match.y+h);
+                glVertex2f(frame->match.x+w, frame->match.y);
+                glVertex2f(frame->match.x, frame->match.y);
+                glVertex2f(frame->match.x, frame->match.y+h);
+                glColor3f(1.0f, 1.0f, 1.0f);
+            glEnd();
         }
 
         free(fr_str);
@@ -114,22 +124,6 @@ void redraw_window() {
 	glFlush();
 }
 
-unsigned char *get_sub_image(struct window *window, int x, int y) {
-    // Allocate sub image
-    unsigned char *data = malloc(window->radius*window->radius*12);
-    memset(data, 0, window->radius*window->radius*12);
-
-    struct frame *fr = get_frame(window->frames, window->cur);
-
-    // Copy each row
-    int i, stride = window->w*3;
-    for (i = 0; i < window->radius*2; i++) {
-        memcpy(data+i*window->radius*6, fr->data+(y-window->radius+i)*stride+(x-window->radius)*3, window->radius*6);
-    }
-
-    return data;
-}
-
 /********************** *
  * Event handlers       *
  * *********************/
@@ -138,7 +132,7 @@ void event_key_special(int key, int x, int y) {
         return;
     }
 
-    int step = 0;
+    int step = 0, i;
     switch (key) {
     case GLUT_KEY_LEFT:
         step = -1;
@@ -152,20 +146,61 @@ void event_key_special(int key, int x, int y) {
     case GLUT_KEY_DOWN:
         step = -10;
         break;
+    case GLUT_KEY_HOME: // Perform match on all frames
+        for (i = 1; i <= active_window->nfr; i++) {
+            struct frame *fr = get_frame(active_window->frames, i);
+            if (fr->flag & HAS_MATCH) {
+                continue;
+            }
+            templateMatch(active_window, i, MARGIN, active_window->tmpl);
+            fr->flag |= HAS_MATCH;
+            calculate_speed(fr);
+        }
+        printf("Done matching\n");
     }
 
+    // Update view
     if (active_window->cur+step > 0 && active_window->cur+step <= active_window->nfr) {
         active_window->cur += step;
         glutPostRedisplay();
     }
 }
 
+void event_key(unsigned char key, int x, int y) {
+    switch (key) {
+        case 'p':
+        case 'P':
+            print_pos_speed(active_window);
+            break;
+    }
+}
+
 void event_mouse(int button, int state, int x, int y) {
-    if (state == GLUT_DOWN) {
+    int err;
+    if (state == GLUT_DOWN) { // Mouse down = find template
+        // Do hough transform to find ball center and radius
         struct frame *fr = get_frame(active_window->frames, active_window->cur);
-        struct EdgeResult er = edgeDetect(active_window, x, y);
-        fr->edge = er;
-        fr->flag |= HAS_EDGE;
+        err = houghTransform(active_window, active_window->cur, x, y);
+        if (err) {
+            return;
+        }
+        fr->flag |= HAS_HOUGH;
+        active_window->guess.x = fr->hough.x;
+        active_window->guess.y = fr->hough.y;
+
+        // Make a subimage containing the template
+        CvRect r = cvRect(fr->hough.x-fr->hough.radius, fr->hough.y-fr->hough.radius, fr->hough.radius*2, fr->hough.radius*2);
+        CvMat *sub = cvCreateMatHeader(fr->hough.radius*2, fr->hough.radius*2, CV_32FC1);
+        cvGetSubRect(fr->image, sub, r);
+        active_window->tmpl = sub;
+
+        // Match (could be left out)
+        templateMatch(active_window, active_window->cur, MARGIN, sub);
+        fr->flag |= HAS_MATCH;
         glutPostRedisplay();
+
+        // Calculate meters per pixel
+        active_window->mpp = atof(active_window->argv[2])/(fr->hough.radius*2);
+        printf("Getting mpp: %f/%f = %f\n", atof(active_window->argv[2]), fr->hough.radius*2, active_window->mpp);
     }
 }

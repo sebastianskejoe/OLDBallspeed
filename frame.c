@@ -1,28 +1,34 @@
 #include "window.h"
-#include "stb_image.h"
 #include <GL/gl.h>
 #include <GL/glut.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <opencv/cv.h>
+#include <opencv/highgui.h>
+
+#include <stdio.h>
+
+#include <math.h>
 
 int load_frames(struct window *window) {
     if (window == 0) {
         return 0;
     }
     // Go through args to find a suitable path format
-    int i, frame, x, y, n;
+    int i, frame;
     char *path;
-    for (i = 0; i < window->argc; i++) {
+/*    for (i = 0; i < window->argc; i++) {
         if (strstr(window->argv[i], "%d") != 0) {
             path = window->argv[i];
+            break;
         }
-    }
+    }*/
+    path = window->argv[1];
 
     // Load all frames
     char *fr_name = malloc(sizeof(path)+10);
     struct frame *ofr = 0; // old frame
-    unsigned char *data;
     for (frame = 1; ; frame++) {
         // Check if file exists
         sprintf(fr_name, path, frame);
@@ -32,6 +38,7 @@ int load_frames(struct window *window) {
 
         // Make frame
         struct frame *nfr = malloc(sizeof(struct frame));
+        memset(nfr, 0, sizeof(struct frame));
         nfr->index = frame;
         nfr->prev = ofr;
 
@@ -44,15 +51,14 @@ int load_frames(struct window *window) {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
         // Load image data
-        data = stbi_load(fr_name, &x, &y, &n, 3);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, x,y, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
-        nfr->data = data;
+        nfr->image = cvLoadImageM(fr_name, CV_LOAD_IMAGE_COLOR);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, nfr->image->cols, nfr->image->rows, 0, GL_BGR, GL_UNSIGNED_BYTE, nfr->image->data.ptr);
 
         // Extra stuff for first frame
         if (frame == 1) {
             window->frames = nfr;
-            window->w = x;
-            window->h = y;
+            window->w = nfr->image->cols;
+            window->h = nfr->image->rows;
             glutReshapeWindow(window->w, window->h);
             glutPostRedisplay();
         }
@@ -74,9 +80,17 @@ int load_frames(struct window *window) {
 struct frame * get_frame(struct frame *frames, int frame) {
     struct frame *fr;
     for (fr = frames; fr; fr = fr->next) {
-        if (fr->index == frame) {
+        if (fr && fr->index == frame) {
             return fr;
         }
     }
     return 0;
+}
+
+void calculate_speed(struct frame *frame) {
+    if (frame->prev && frame->prev->flag & HAS_MATCH && frame->flag & HAS_MATCH) {
+        double x = frame->match.x-frame->prev->match.x;
+        double y = frame->match.y-frame->prev->match.y;
+        frame->speed = sqrt(pow(x, 2.0)+pow(y, 2.0));
+    }
 }
